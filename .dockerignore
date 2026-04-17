@@ -1,5 +1,8 @@
 node_modules
+coverage
 *.md
 .git
 .gitignore
 .dockerignore
+docker-compose.yml
+observability/

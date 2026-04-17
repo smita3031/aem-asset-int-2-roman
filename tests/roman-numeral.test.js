@@ -10,9 +10,9 @@
  */
 
 const request = require('supertest');
-const app     = require('./app');
-const { toRoman }                           = require('./converter');
-const { validateSingleQuery, validateRangeQuery } = require('./validation');
+const app     = require('../src/app');
+const { toRoman }                           = require('../src/converter');
+const { validateSingleQuery, validateRangeQuery } = require('../src/validation');
 
 // ==========================================================================
 // 1. Unit tests: toRoman()
@@ -305,5 +305,46 @@ describe('GET /romannumeral – integration tests', () => {
       const res = await request(app).get('/');
       expect(res.status).toBe(404);
     });
+  });
+});
+
+// ==========================================================================
+// 4. Ops endpoints
+// ==========================================================================
+describe('GET /health', () => {
+  test('200 with status ok', async () => {
+    const res = await request(app).get('/health');
+    expect(res.status).toBe(200);
+    expect(res.body.status).toBe('ok');
+  });
+
+  test('response includes uptime (number) and timestamp (ISO string)', async () => {
+    const res = await request(app).get('/health');
+    expect(typeof res.body.uptime).toBe('number');
+    expect(() => new Date(res.body.timestamp)).not.toThrow();
+  });
+
+  test('Content-Type is application/json', async () => {
+    const res = await request(app).get('/health');
+    expect(res.headers['content-type']).toMatch(/json/);
+  });
+});
+
+describe('GET /metrics', () => {
+  test('200 with Prometheus text format', async () => {
+    const res = await request(app).get('/metrics');
+    expect(res.status).toBe(200);
+    expect(res.headers['content-type']).toMatch(/text\/plain/);
+  });
+
+  test('response contains http_requests_total metric', async () => {
+    await request(app).get('/romannumeral?query=1');
+    const res = await request(app).get('/metrics');
+    expect(res.text).toContain('http_requests_total');
+  });
+
+  test('response contains http_request_duration_seconds metric', async () => {
+    const res = await request(app).get('/metrics');
+    expect(res.text).toContain('http_request_duration_seconds');
   });
 });
