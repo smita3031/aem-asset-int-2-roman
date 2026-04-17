@@ -1,0 +1,95 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+
+  # ── 1. Install ──────────────────────────────────────────────────────────────
+  # Gate: ensures npm ci itself succeeds before any other job runs.
+  install:
+    name: Install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+
+  # ── 2a. Lint (parallel with verify) ────────────────────────────────────────
+  lint:
+    name: Lint
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run ESLint
+        run: npm run lint
+
+  # ── 2b. Verify (parallel with lint) ────────────────────────────────────────
+  # Fails the pipeline on any high or critical npm audit finding.
+  verify:
+    name: Verify
+    needs: install
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Security audit
+        run: npm audit --audit-level=high
+
+  # ── 3. Test ─────────────────────────────────────────────────────────────────
+  test:
+    name: Test
+    needs: [lint, verify]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - run: npm ci
+      - name: Run tests with coverage
+        run: npm run test:coverage
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: coverage-report
+          path: coverage/
+          retention-days: 7
+
+  # ── 4. Build ─────────────────────────────────────────────────────────────────
+  # Builds the Docker image (which also re-runs tests inside the container).
+  # Uses GitHub Actions cache for Docker layer caching to keep builds fast.
+  build:
+    name: Docker Build
+    needs: test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: roman-numeral-service:${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
